@@ -1,0 +1,8 @@
+{
+  "name": "WebP Export",
+  "description": "Exporta as camadas selecionadas em WebP com controle de qualidade e escalas para Web, Android e iOS.",
+  "version": 2,
+  "code": "plugin.js",
+  "icon": "icon.svg",
+  "permissions": ["content:read", "allow:downloads"]
+}

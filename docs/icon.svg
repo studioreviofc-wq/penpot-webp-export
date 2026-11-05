@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">
+  <rect width="56" height="56" rx="12" fill="#18191b"/>
+  <path d="M12 38l9-12 7 9 5-6 11 9z" fill="#31efb8"/>
+  <circle cx="36" cy="18" r="4" fill="#31efb8"/>
+  <text x="28" y="50" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">WEBP</text>
+</svg>

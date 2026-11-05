@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebP Export</title>
+<style>
+  :root {
+    --bg: #18191b; --panel: #212426; --line: #2e3434; --text: #e8eaee;
+    --muted: #8f9da3; --accent: #31efb8; --accent-text: #18191b; --danger: #ff6b6b;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --panel: #f3f4f6; --line: #e1e3e6; --text: #000000;
+    --muted: #6b7277; --accent: #6911d4; --accent-text: #ffffff; --danger: #d32f2f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 12px/1.4 "Work Sans", system-ui, -apple-system, Segoe UI, sans-serif; }
+  main { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+  h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0 0 6px; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  #selection { max-height: 110px; overflow: auto; }
+  #selection .item { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+  #selection .item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #selection .dim { color: var(--muted); flex-shrink: 0; }
+  .empty { color: var(--muted); }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .seg button, .chip { background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 4px; font: inherit; cursor: pointer; }
+  .seg button.on, .chip.on { border-color: var(--accent); color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { padding: 5px 9px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  #qval { min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+  label.check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  #preview { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--muted);
+    white-space: pre; overflow: auto; max-height: 90px; }
+  #go { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
+    padding: 10px; font: inherit; font-weight: 600; cursor: pointer; }
+  #go:disabled { opacity: .45; cursor: not-allowed; }
+  #status { min-height: 16px; color: var(--muted); }
+  #status.err { color: var(--danger); }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Seleção</h2>
+    <div class="box" id="selection"><div class="empty">Selecione uma ou mais camadas no Penpot.</div></div>
+  </section>
+
+  <section>
+    <h2>Destino</h2>
+    <div class="seg" id="presets">
+      <button data-p="web" class="on">Web</button>
+      <button data-p="android">Android</button>
+      <button data-p="ios">iOS</button>
+      <button data-p="single">Único</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Escalas</h2>
+    <div class="chips" id="scales"></div>
+  </section>
+
+  <section>
+    <h2>Qualidade</h2>
+    <div class="row">
+      <input type="range" id="quality" min="1" max="100" value="85">
+      <span id="qval">85</span>
+    </div>
+    <label class="check" style="margin-top:6px">
+      <input type="checkbox" id="lossless"> Sem perdas (lossless)
+    </label>
+    <div class="hint">80–90 costuma ser o melhor equilíbrio entre peso e nitidez.</div>
+  </section>
+
+  <section>
+    <h2>Arquivos</h2>
+    <div class="box" id="preview"></div>
+  </section>
+
+  <button id="go" disabled>Exportar WebP</button>
+  <div id="status"></div>
+</main>
+
+<script>
+(() => {
+  // ---------- Presets (mesma estrutura do WebP Generator do Figma) ----------
+  const PRESETS = {
+    web: {
+      scales: [1, 1.5, 2, 3, 4], defaults: [1, 2, 3],
+      path: (n, s) => `${n}/${n}_${String(s).replace(".", "_")}x.webp`,
+    },
+    android: {
+      scales: [1, 1.5, 2, 3, 4], defaults: [1, 1.5, 2, 3, 4],
+      labels: { 1: "mdpi", 1.5: "hdpi", 2: "xhdpi", 3: "xxhdpi", 4: "xxxhdpi" },
+      path: (n, s) => `drawable-${PRESETS.android.labels[s]}/${n}.webp`,
+      name: (n) => n.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "_$1") || "image",
+    },
+    ios: {
+      scales: [1, 2, 3], defaults: [1, 2, 3],
+      path: (n, s) => `${n}/${n}${s === 1 ? "" : "@" + s + "x"}.webp`,
+    },
+    single: {
+      scales: [0.5, 1, 2, 3, 4], defaults: [1], exclusive: true,
+      path: (n, s) => `${n}${s === 1 ? "" : "@" + s + "x"}.webp`,
+    },
+  };
+
+  const state = { preset: "web", scales: new Set(PRESETS.web.defaults), shapes: [] };
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status");
+
+  // ---------- Tema ----------
+  const setTheme = (t) => document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+  setTheme(new URLSearchParams(location.search).get("theme"));
+
+  // ---------- Comunicação com o plugin ----------
+  const pending = new Map();
+  let reqSeq = 0;
+  const send = (msg) => parent.postMessage(msg, "*");
+
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.parent) return;
+    const msg = e.data;
+    if (!msg || typeof msg !== "object") return;
+    if (msg.type === "theme") setTheme(msg.theme);
+    else if (msg.type === "selection") { state.shapes = msg.shapes || []; renderSelection(); renderPreview(); }
+    else if (msg.type === "export-result" || msg.type === "export-error") {
+      const p = pending.get(msg.reqId);
+      if (!p) return;
+      pending.delete(msg.reqId);
+      msg.type === "export-result" ? p.resolve(msg.bytes) : p.reject(new Error(msg.error));
+    }
+  });
+
+  function exportShape(shapeId, scale, format) {
+    const reqId = ++reqSeq;
+    return new Promise((resolve, reject) => {
+      pending.set(reqId, { resolve, reject });
+      send({ type: "export", reqId, shapeId, scale, format });
+    });
+  }
+
+  // ---------- UI ----------
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function renderSelection() {
+    const el = $("selection");
+    if (!state.shapes.length) {
+      el.innerHTML = '<div class="empty">Selecione uma ou mais camadas no Penpot.</div>';
+    } else {
+      el.innerHTML = state.shapes.map((s) =>
+        `<div class="item"><span>${esc(s.name)}</span><span class="dim">${s.width}×${s.height}</span></div>`).join("");
+    }
+  }
+
+  function renderScales() {
+    const p = PRESETS[state.preset];
+    $("scales").innerHTML = p.scales.map((s) => {
+      const label = p.labels ? `${p.labels[s]} · ${s}x` : `${s}x`;
+      return `<button class="chip ${state.scales.has(s) ? "on" : ""}" data-s="${s}">${label}</button>`;
+    }).join("");
+  }
+
+  function baseName(raw) {
+    const p = PRESETS[state.preset];
+    const clean = String(raw || "image").trim().replace(/[\\/:*?"<>|]+/g, "_") || "image";
+    return p.name ? p.name(clean) : clean;
+  }
+
+  function buildJobs() {
+    const p = PRESETS[state.preset];
+    const scales = p.scales.filter((s) => state.scales.has(s));
+    const used = new Map();
+    const jobs = [];
+    for (const shape of state.shapes) {
+      let n = baseName(shape.name);
+      const count = (used.get(n) || 0) + 1;
+      used.set(n, count);
+      if (count > 1) n = `${n}_${count}`;
+      for (const s of scales) jobs.push({ shapeId: shape.id, scale: s, path: p.path(n, s) });
+    }
+    return jobs;
+  }
+
+  function renderPreview() {
+    const jobs = buildJobs();
+    $("preview").textContent = jobs.length ? jobs.map((j) => j.path).join("\n") : "—";
+    $("go").disabled = !jobs.length;
+    $("go").textContent = jobs.length > 1 ? `Exportar ${jobs.length} arquivos (.zip)` : "Exportar WebP";
+  }
+
+  $("presets").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-p]");
+    if (!b) return;
+    state.preset = b.dataset.p;
+    state.scales = new Set(PRESETS[state.preset].defaults);
+    document.querySelectorAll("#presets button").forEach((x) => x.classList.toggle("on", x === b));
+    renderScales(); renderPreview();
+  });
+
+  $("scales").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-s]");
+    if (!b) return;
+    const s = Number(b.dataset.s);
+    if (PRESETS[state.preset].exclusive) state.scales = new Set([s]);
+    else if (state.scales.has(s)) state.scales.delete(s);
+    else state.scales.add(s);
+    renderScales(); renderPreview();
+  });
+
+  $("quality").addEventListener("input", (e) => { $("qval").textContent = e.target.value; });
+  $("lossless").addEventListener("change", (e) => {
+    $("quality").disabled = e.target.checked;
+    $("qval").textContent = e.target.checked ? "100" : $("quality").value;
+  });
+
+  // ---------- Conversão PNG -> WebP ----------
+  let canvasWebp = null;
+  async function supportsCanvasWebp() {
+    if (canvasWebp !== null) return canvasWebp;
+    const c = document.createElement("canvas"); c.width = c.height = 1;
+    const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.8));
+    return (canvasWebp = !!blob && blob.type === "image/webp");
+  }
+
+  async function pngToWebp(bytes, quality) {
+    const bmp = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    c.getContext("2d").drawImage(bmp, 0, 0);
+    bmp.close && bmp.close();
+    const blob = await new Promise((r) => c.toBlob(r, "image/webp", quality));
+    if (!blob || blob.type !== "image/webp") throw new Error("Navegador não gera WebP");
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  async function makeWebp(job, quality) {
+    if (await supportsCanvasWebp()) {
+      const png = await exportShape(job.shapeId, job.scale, "png");
+      return pngToWebp(png, quality);
+    }
+    // Fallback: exportação WebP nativa do Penpot (sem controle de qualidade)
+    return exportShape(job.shapeId, job.scale, "webp");
+  }
+
+  // ---------- ZIP (sem compressão, WebP já é comprimido) ----------
+  const CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(buf) {
+    let c = 0xffffffff;
+    for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function makeZip(files) {
+    const enc = new TextEncoder();
+    const d = new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = [], central = [];
+    let offset = 0;
+
+    for (const f of files) {
+      const name = enc.encode(f.path);
+      const crc = crc32(f.data);
+      const size = f.data.length;
+
+      const local = new DataView(new ArrayBuffer(30));
+      local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true);
+      local.setUint16(6, 0x0800, true); local.setUint16(8, 0, true);
+      local.setUint16(10, time, true); local.setUint16(12, date, true);
+      local.setUint32(14, crc, true); local.setUint32(18, size, true);
+      local.setUint32(22, size, true); local.setUint16(26, name.length, true);
+      local.setUint16(28, 0, true);
+      parts.push(new Uint8Array(local.buffer), name, f.data);
+
+      const cen = new DataView(new ArrayBuffer(46));
+      cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true);
+      cen.setUint16(8, 0x0800, true); cen.setUint16(10, 0, true);
+      cen.setUint16(12, time, true); cen.setUint16(14, date, true);
+      cen.setUint32(16, crc, true); cen.setUint32(20, size, true); cen.setUint32(24, size, true);
+      cen.setUint16(28, name.length, true); cen.setUint32(42, offset, true);
+      central.push(new Uint8Array(cen.buffer), name);
+
+      offset += 30 + name.length + size;
+    }
+
+    const cenSize = central.reduce((a, b) => a + b.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true);
+    end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cenSize, true); end.setUint32(16, offset, true);
+    return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+  }
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  const fmtSize = (b) => b > 1048576 ? (b / 1048576).toFixed(2) + " MB" : (b / 1024).toFixed(1) + " KB";
+
+  // ---------- Exportar ----------
+  $("go").addEventListener("click", async () => {
+    const jobs = buildJobs();
+    if (!jobs.length) return;
+    const quality = $("lossless").checked ? 1 : Number($("quality").value) / 100;
+    $("go").disabled = true;
+    statusEl.className = "";
+    try {
+      const files = [];
+      for (let i = 0; i < jobs.length; i++) {
+        statusEl.textContent = `Gerando ${i + 1} de ${jobs.length}…`;
+        files.push({ path: jobs[i].path, data: await makeWebp(jobs[i], quality) });
+      }
+      const total = files.reduce((a, f) => a + f.data.length, 0);
+      if (files.length === 1) {
+        download(new Blob([files[0].data], { type: "image/webp" }), files[0].path.split("/").pop());
+      } else {
+        const zipName = state.shapes.length === 1 ? `${baseName(state.shapes[0].name)}-webp.zip` : "webp-export.zip";
+        download(makeZip(files), zipName);
+      }
+      statusEl.textContent = `Pronto: ${files.length} arquivo(s), ${fmtSize(total)}.`;
+    } catch (err) {
+      statusEl.className = "err";
+      statusEl.textContent = "Erro: " + (err && err.message ? err.message : err);
+    } finally {
+      renderPreview();
+    }
+  });
+
+  renderScales();
+  renderPreview();
+  send({ type: "ready" });
+})();
+</script>
+</body>
+</html>
