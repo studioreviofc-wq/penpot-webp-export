@@ -44,48 +44,59 @@
   #go:disabled { opacity: .45; cursor: not-allowed; }
   #status { min-height: 16px; color: var(--muted); }
   #status.err { color: var(--danger); }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .head h2 { margin: 0; }
+  #lang { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 3px 6px; font: inherit; font-size: 11px; cursor: pointer; }
 </style>
 </head>
 <body>
 <main>
   <section>
-    <h2>Seleção</h2>
-    <div class="box" id="selection"><div class="empty">Selecione uma ou mais camadas no Penpot.</div></div>
+    <div class="head">
+      <h2 data-i18n="selection"></h2>
+      <select id="lang" aria-label="Language">
+        <option value="en">English</option>
+        <option value="pt">Português</option>
+        <option value="es">Español</option>
+      </select>
+    </div>
+    <div class="box" id="selection"></div>
   </section>
 
   <section>
-    <h2>Destino</h2>
+    <h2 data-i18n="target"></h2>
     <div class="seg" id="presets">
       <button data-p="web" class="on">Web</button>
       <button data-p="android">Android</button>
       <button data-p="ios">iOS</button>
-      <button data-p="single">Único</button>
+      <button data-p="single" data-i18n="single"></button>
     </div>
   </section>
 
   <section>
-    <h2>Escalas</h2>
+    <h2 data-i18n="scales"></h2>
     <div class="chips" id="scales"></div>
   </section>
 
   <section>
-    <h2>Qualidade</h2>
+    <h2 data-i18n="quality"></h2>
     <div class="row">
       <input type="range" id="quality" min="1" max="100" value="85">
       <span id="qval">85</span>
     </div>
     <label class="check" style="margin-top:6px">
-      <input type="checkbox" id="lossless"> Sem perdas (lossless)
+      <input type="checkbox" id="lossless"> <span data-i18n="lossless"></span>
     </label>
-    <div class="hint">80–90 costuma ser o melhor equilíbrio entre peso e nitidez.</div>
+    <div class="hint" data-i18n="hint"></div>
   </section>
 
   <section>
-    <h2>Arquivos</h2>
+    <h2 data-i18n="files"></h2>
     <div class="box" id="preview"></div>
   </section>
 
-  <button id="go" disabled>Exportar WebP</button>
+  <button id="go" disabled></button>
   <div id="status"></div>
 </main>
 
@@ -116,6 +127,55 @@
   const state = { preset: "web", scales: new Set(PRESETS.web.defaults), shapes: [] };
   const $ = (id) => document.getElementById(id);
   const statusEl = $("status");
+
+  // ---------- Idiomas ----------
+  const I18N = {
+    en: {
+      selection: "Selection", target: "Target", single: "Single", scales: "Scales", quality: "Quality",
+      lossless: "Lossless", files: "Files", hint: "80–90 is usually the best balance between size and sharpness.",
+      empty: "Select one or more layers in Penpot.", exportOne: "Export WebP", exportMany: "Export {n} files (.zip)",
+      progress: "Generating {i} of {n}…", done: "Done: {n} file(s), {size}.", error: "Error: ",
+      notFound: "Layer not found", noWebp: "This browser can't encode WebP",
+    },
+    pt: {
+      selection: "Seleção", target: "Destino", single: "Único", scales: "Escalas", quality: "Qualidade",
+      lossless: "Sem perdas (lossless)", files: "Arquivos", hint: "80–90 costuma ser o melhor equilíbrio entre peso e nitidez.",
+      empty: "Selecione uma ou mais camadas no Penpot.", exportOne: "Exportar WebP", exportMany: "Exportar {n} arquivos (.zip)",
+      progress: "Gerando {i} de {n}…", done: "Pronto: {n} arquivo(s), {size}.", error: "Erro: ",
+      notFound: "Camada não encontrada", noWebp: "Este navegador não gera WebP",
+    },
+    es: {
+      selection: "Selección", target: "Destino", single: "Único", scales: "Escalas", quality: "Calidad",
+      lossless: "Sin pérdida (lossless)", files: "Archivos", hint: "80–90 suele ser el mejor equilibrio entre peso y nitidez.",
+      empty: "Selecciona una o más capas en Penpot.", exportOne: "Exportar WebP", exportMany: "Exportar {n} archivos (.zip)",
+      progress: "Generando {i} de {n}…", done: "Listo: {n} archivo(s), {size}.", error: "Error: ",
+      notFound: "Capa no encontrada", noWebp: "Este navegador no genera WebP",
+    },
+  };
+  const LANG_KEY = "webp-export-lang";
+  function detectLang() {
+    const q = new URLSearchParams(location.search).get("lang");
+    if (q && I18N[q]) return q;
+    try { const saved = localStorage.getItem(LANG_KEY); if (saved && I18N[saved]) return saved; } catch (e) {}
+    const nav = (navigator.language || "en").slice(0, 2).toLowerCase();
+    return I18N[nav] ? nav : "en";
+  }
+  let lang = detectLang();
+  const t = (key, vars) => String(I18N[lang][key] ?? I18N.en[key]).replace(/\{(\w+)\}/g, (_, k) => vars && vars[k] != null ? vars[k] : "");
+
+  function applyLang() {
+    document.documentElement.lang = lang === "pt" ? "pt-BR" : lang;
+    $("lang").value = lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    renderSelection();
+    renderPreview();
+  }
+  $("lang").addEventListener("change", (e) => {
+    lang = e.target.value;
+    try { localStorage.setItem(LANG_KEY, lang); } catch (err) {}
+    statusEl.textContent = "";
+    applyLang();
+  });
 
   // ---------- Tema ----------
   const setTheme = (t) => document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
@@ -154,7 +214,7 @@
   function renderSelection() {
     const el = $("selection");
     if (!state.shapes.length) {
-      el.innerHTML = '<div class="empty">Selecione uma ou mais camadas no Penpot.</div>';
+      el.innerHTML = `<div class="empty">${esc(t("empty"))}</div>`;
     } else {
       el.innerHTML = state.shapes.map((s) =>
         `<div class="item"><span>${esc(s.name)}</span><span class="dim">${s.width}×${s.height}</span></div>`).join("");
@@ -194,7 +254,7 @@
     const jobs = buildJobs();
     $("preview").textContent = jobs.length ? jobs.map((j) => j.path).join("\n") : "—";
     $("go").disabled = !jobs.length;
-    $("go").textContent = jobs.length > 1 ? `Exportar ${jobs.length} arquivos (.zip)` : "Exportar WebP";
+    $("go").textContent = jobs.length > 1 ? t("exportMany", { n: jobs.length }) : t("exportOne");
   }
 
   $("presets").addEventListener("click", (e) => {
@@ -238,7 +298,7 @@
     c.getContext("2d").drawImage(bmp, 0, 0);
     bmp.close && bmp.close();
     const blob = await new Promise((r) => c.toBlob(r, "image/webp", quality));
-    if (!blob || blob.type !== "image/webp") throw new Error("Navegador não gera WebP");
+    if (!blob || blob.type !== "image/webp") throw new Error(t("noWebp"));
     return new Uint8Array(await blob.arrayBuffer());
   }
 
@@ -328,7 +388,7 @@
     try {
       const files = [];
       for (let i = 0; i < jobs.length; i++) {
-        statusEl.textContent = `Gerando ${i + 1} de ${jobs.length}…`;
+        statusEl.textContent = t("progress", { i: i + 1, n: jobs.length });
         files.push({ path: jobs[i].path, data: await makeWebp(jobs[i], quality) });
       }
       const total = files.reduce((a, f) => a + f.data.length, 0);
@@ -338,17 +398,18 @@
         const zipName = state.shapes.length === 1 ? `${baseName(state.shapes[0].name)}-webp.zip` : "webp-export.zip";
         download(makeZip(files), zipName);
       }
-      statusEl.textContent = `Pronto: ${files.length} arquivo(s), ${fmtSize(total)}.`;
+      statusEl.textContent = t("done", { n: files.length, size: fmtSize(total) });
     } catch (err) {
       statusEl.className = "err";
-      statusEl.textContent = "Erro: " + (err && err.message ? err.message : err);
+      const msg = err && err.message ? err.message : String(err);
+      statusEl.textContent = t("error") + (msg === "NOT_FOUND" ? t("notFound") : msg);
     } finally {
       renderPreview();
     }
   });
 
   renderScales();
-  renderPreview();
+  applyLang();
   send({ type: "ready" });
 })();
 </script>

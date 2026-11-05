@@ -32,7 +32,7 @@ penpot.ui.onMessage(async (msg) => {
     const { reqId, shapeId, scale, format } = msg;
     try {
       const shape = findShape(shapeId);
-      if (!shape) throw new Error("Camada não encontrada");
+      if (!shape) throw new Error("NOT_FOUND");
       const bytes = await shape.export({ type: format || "png", scale });
       penpot.ui.sendMessage({ type: "export-result", reqId, bytes });
     } catch (err) {
